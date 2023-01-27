@@ -1,0 +1,87 @@
+---
+- name: Deploy image to ECS
+  hosts: localhost
+  vars:
+    image_name: "{{ image_name }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    task_definition: "{{ service_name }}-task"
+  tasks:
+    - name: Create ECS cluster if it does not exist
+      ecs_cluster:
+        name: "{{ cluster_name }}"
+        state: present
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: ecs_cluster
+      when: ecs_cluster.status != 'ACTIVE'
+
+    
+
+    - name: Fetch latest task definition
+      ecs_taskdefinition:
+        state: present
+        family: "{{ task_definition }}"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: task_definition
+
+    - name: Update task definition with new image
+      ecs_taskdefinition:
+        state: present
+        family: "{{ task_definition }}"
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        container_definitions: "{{ task_definition.task_definition.container_definitions|from_json }}"
+        container_definitions:
+          - name: "{{ service_name }}"
+            image: "{{ image_name }}"
+            essential: true
+            memory: 512
+            portMappings:
+              - containerPort: 3000
+                hostPort: 3000
+                protocol: tcp
+
+    - name: Update service with new task definition
+      ecs_service:
+        state: present
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        task_definition: "{{ task_definition.task_definition.family }}:{{ task_definition.task_definition.revision }}"
+        desired_count: 1
+        region: "{{ aws_region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create Load Balancer
+      elb_classic_load_balancer:
+        name: "{{ elb_name }}"
+        state: present
+        region: "{{ aws_region }}"
+        listeners:
+          - protocol: http
+            load_balancer_port: 80
+            instance_protocol: http
+            instance_port: 3000
+        security_groups:
+          - sg-0123456789abcdef0
+        subnets:
+          - subnet-0ae9a8d837dfaf1e7
+          - subnet-09542fb9273ae3894
+          - subnet-0ce625831836fc95e
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    
+
+
+      
+
+
+
+
+
